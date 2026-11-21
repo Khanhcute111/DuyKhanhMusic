@@ -1,0 +1,1356 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>AI Remix Style Transfer Studio</title>
+
+<!-- Tailwind (CDN, ghim phiên bản) -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#0b0d11', panel: '#14171d', well: '#0f1217', line: '#252a33',
+          ink: '#dde1e8', mute: '#7e8795',
+          ref: '#ff9a3c', tgt: '#3cc8ff', mix: '#8bff7a',
+          danger: '#ff5d6c', warn: '#ffcf5a'
+        },
+        fontFamily: {
+          mono: ['ui-monospace', 'SF Mono', 'JetBrains Mono', 'Menlo', 'Consolas', 'monospace']
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  :root { --ref: #ff9a3c; --tgt: #3cc8ff; --mix: #8bff7a; --line: #252a33; --well: #0f1217; }
+  html { background: #0b0d11; }
+  body {
+    background-color: #0b0d11;
+    /* lưới mờ kiểu DAW */
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: #dde1e8;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .panel { background: #14171d; border: 1px solid var(--line); border-radius: 10px; position: relative; overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem; border-bottom: 1px solid var(--line);
+                background: linear-gradient(#181c23, #14171d); }
+  .tag { font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; padding: .32rem .45rem; border-radius: 4px;
+         color: #0b0d11; background: var(--accent, #8bff7a); }
+  .accent-text { color: var(--accent); }
+  .well { background: var(--well); border: 1px solid var(--line); border-radius: 8px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .5rem .9rem; border-radius: 6px;
+         font-size: .8125rem; font-weight: 600; border: 1px solid var(--line); background: #1b2028; color: #dde1e8; cursor: pointer;
+         transition: background .15s, border-color .15s, opacity .15s; }
+  .btn:hover:not(:disabled) { background: #232932; border-color: #353c48; }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; pointer-events: none; }
+  .btn-primary { background: var(--mix); border-color: var(--mix); color: #08110a; }
+  .btn-primary:hover:not(:disabled) { background: #a4ff96; border-color: #a4ff96; }
+  .btn:focus-visible, .dropzone:focus-visible, .play-btn:focus-visible, .chk:focus-visible, .icon-btn:focus-visible {
+    outline: 2px solid var(--accent, var(--mix)); outline-offset: 2px;
+  }
+  .icon-btn { background: transparent; border: 0; color: #7e8795; cursor: pointer; padding: .2rem .35rem; border-radius: 4px; font-size: .8rem; }
+  .icon-btn:hover { color: #dde1e8; background: #1b2028; }
+
+  .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; min-height: 15rem; text-align: center;
+              border: 1.5px dashed #343b47; border-radius: 8px; background: var(--well); cursor: pointer; padding: 1.5rem;
+              transition: border-color .15s, background .15s; }
+  .dropzone:hover, .panel.is-drag .dropzone { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, #0f1217); }
+  .dragveil { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; pointer-events: none;
+              background: color-mix(in srgb, var(--accent) 14%, rgba(11,13,17,.82)); border: 2px dashed var(--accent); border-radius: 10px;
+              font-weight: 700; color: var(--accent); letter-spacing: .02em; }
+
+  .play-btn { width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1.5px solid var(--accent, var(--mix)); background: transparent;
+              color: var(--accent, var(--mix)); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
+              transition: background .15s; }
+  .play-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, var(--mix)) 16%, transparent); }
+  .play-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  .stat { background: var(--well); border: 1px solid var(--line); border-radius: 8px; padding: .55rem .7rem; min-width: 0; }
+  .stat-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #7e8795; }
+  .stat-val { font: 600 1.35rem/1.25 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat-sub { font: 11px/1.3 ui-monospace, Menlo, Consolas, monospace; color: #7e8795; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* timeline các đoạn + điểm Drop */
+  .timeline { position: relative; height: 1.9rem; border-radius: 6px; background: #0b0e12; border: 1px solid var(--line); overflow: hidden; cursor: pointer; }
+  .tl-seg { position: absolute; top: 0; bottom: 0; display: flex; align-items: flex-end; padding: 0 .3rem .15rem; overflow: hidden;
+            font: 600 9px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.55);
+            border-right: 1px solid rgba(0,0,0,.55); }
+  .tl-seg[data-label="intro"], .tl-seg[data-label="outro"] { background: #232932; }
+  .tl-seg[data-label="breakdown"] { background: #1a2a36; }
+  .tl-seg[data-label="drop"] { background: color-mix(in srgb, var(--accent) 38%, #14171d); color: rgba(255,255,255,.8); }
+  .tl-mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; opacity: .85; pointer-events: none; }
+  .tl-mark.minor { opacity: .35; width: 1px; }
+  .tl-mark.hook { background: #ffcf5a; }
+  .tl-mark span { position: absolute; top: 1px; left: 4px; font: 700 9px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; color: #fff; }
+  .tl-mark.hook span { color: #ffcf5a; }
+  .tl-head { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); box-shadow: 0 0 6px var(--accent); pointer-events: none; display: none; }
+
+  /* fader (thanh trượt) */
+  input[type=range].fader { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; cursor: pointer; margin: 0; --p: 50%; }
+  .fader::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--mix) var(--p), #262c36 var(--p)); }
+  .fader::-moz-range-track { height: 6px; border-radius: 3px; background: #262c36; }
+  .fader::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--mix); }
+  .fader::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 22px; margin-top: -8px; border-radius: 3px; border: 1px solid #000a;
+                                 background: linear-gradient(#eef1f5, #98a1ae); box-shadow: 0 1px 3px #000c; }
+  .fader::-moz-range-thumb { width: 11px; height: 20px; border-radius: 3px; border: 1px solid #000a; background: linear-gradient(#eef1f5, #98a1ae); box-shadow: 0 1px 3px #000c; }
+  .fader:focus-visible { outline: none; }
+  .fader:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--mix); outline-offset: 2px; }
+  .fader:focus-visible::-moz-range-thumb { outline: 2px solid var(--mix); outline-offset: 2px; }
+  .fader:disabled { opacity: .45; cursor: not-allowed; }
+
+  .num { width: 4.5rem; background: #0b0e12; border: 1px solid var(--line); border-radius: 5px; color: #dde1e8; padding: .25rem .4rem;
+         font: 12px ui-monospace, Menlo, Consolas, monospace; }
+  .num:disabled { opacity: .4; }
+  .chk { accent-color: #8bff7a; width: 14px; height: 14px; }
+
+  /* thanh bước tiến trình */
+  .step { min-width: 0; flex: 1 1 0; }
+  .step-name { display: flex; align-items: center; gap: .35rem; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #6b7482; white-space: nowrap; }
+  .step-dot { width: 7px; height: 7px; border-radius: 50%; background: #343b47; flex: none; }
+  .step-track { margin-top: .35rem; height: 5px; border-radius: 3px; background: #232831; overflow: hidden; }
+  .step-fill { height: 100%; width: 0; background: var(--accent, var(--mix)); transition: width .35s ease; }
+  .step[data-state="active"] .step-name { color: #dde1e8; }
+  .step[data-state="active"] .step-dot { background: var(--accent, var(--mix)); box-shadow: 0 0 8px var(--accent, var(--mix)); animation: pulse 1.1s ease-in-out infinite; }
+  .step[data-state="done"] .step-name { color: #aeb6c2; }
+  .step[data-state="done"] .step-dot { background: var(--accent, var(--mix)); }
+  .step[data-state="error"] .step-name { color: #ff5d6c; }
+  .step[data-state="error"] .step-dot { background: #ff5d6c; }
+  .step[data-state="error"] .step-fill { background: #ff5d6c; }
+  .overall { height: 3px; border-radius: 2px; background: #232831; overflow: hidden; }
+  .overall > div { height: 100%; width: 0; background: var(--accent, var(--mix)); transition: width .35s ease; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .errbox { border: 1px solid rgba(255,93,108,.5); background: rgba(255,93,108,.08); color: #ffb3ba; border-radius: 8px; padding: .7rem .9rem; font-size: .85rem; }
+  .warnbox { border: 1px solid rgba(255,207,90,.45); background: rgba(255,207,90,.07); color: #ffe19a; border-radius: 8px; padding: .55rem .8rem; font-size: .8rem; }
+  .led { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: #3a414d; }
+  .led.on { background: #8bff7a; box-shadow: 0 0 6px #8bff7a; }
+  .led.off { background: #ffcf5a; box-shadow: 0 0 6px #ffcf5a; }
+  .led.bad { background: #ff5d6c; box-shadow: 0 0 6px #ff5d6c; }
+  .badge { font: 700 10px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; padding: .28rem .45rem; border-radius: 4px; border: 1px solid var(--line); color: #aeb6c2; text-transform: uppercase; }
+  .badge.warn { color: #ffcf5a; border-color: rgba(255,207,90,.5); }
+  .badge.ok { color: #8bff7a; border-color: rgba(139,255,122,.45); }
+  .hidden { display: none !important; }
+
+  .wave-wrap { position: relative; border-radius: 8px; background: #0b0e12; border: 1px solid var(--line); min-height: 140px; }
+  .wave-wrap.is-stale #wave { opacity: .45; transition: opacity .2s; }
+  .drop-pin { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed rgba(255,255,255,.55); pointer-events: none; z-index: 3; }
+  .drop-pin span { position: absolute; top: 3px; left: 5px; font: 700 9px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff; background: rgba(11,13,17,.7); padding: 2px 4px; border-radius: 3px; }
+
+  .toast { max-width: 26rem; padding: .65rem .9rem; border-radius: 8px; font-size: .82rem; border: 1px solid var(--line); background: #1b2028; box-shadow: 0 8px 24px #000a; }
+  .toast.error { border-color: rgba(255,93,108,.55); color: #ffc0c6; }
+  .toast.warn { border-color: rgba(255,207,90,.5); color: #ffe19a; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .step-fill, .overall > div { transition: none; }
+    .step[data-state="active"] .step-dot { animation: none; }
+  }
+</style>
+</head>
+
+<body class="min-h-screen antialiased">
+
+<header class="sticky top-0 z-30 border-b border-line bg-[#0e1116]/90 backdrop-blur">
+  <div class="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      <rect width="26" height="26" rx="6" fill="#1b2028" stroke="#2b323d"/>
+      <g fill="#8bff7a"><rect x="5" y="11" width="2.2" height="4" rx="1"/><rect x="9" y="7" width="2.2" height="12" rx="1"/><rect x="13" y="4" width="2.2" height="18" rx="1"/><rect x="17" y="8" width="2.2" height="10" rx="1"/><rect x="21" y="11.5" width="2.2" height="3" rx="1"/></g>
+    </svg>
+    <h1 class="text-sm font-semibold tracking-wide">AI REMIX <span class="hidden font-normal text-mute sm:inline">STYLE TRANSFER STUDIO</span></h1>
+    <div id="sys-chips" class="ml-auto flex items-center gap-4 font-mono text-[11px] text-mute"></div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-7xl space-y-4 px-4 py-5">
+  <div id="banners" class="space-y-2"></div>
+  <div id="tracks" class="grid gap-4 lg:grid-cols-2"></div>
+
+  <!-- ===================== KHU REMIX ===================== -->
+  <section id="panel-render" class="panel" style="--accent: var(--mix)">
+    <header class="panel-head">
+      <span class="tag">MIX</span>
+      <div class="min-w-0">
+        <h2 class="text-sm font-semibold">Bản remix</h2>
+        <p class="truncate text-xs text-mute">Vocal của Target đặt vào Drop của Reference, thêm Reverb/Delay + sidechain, master bằng Matchering</p>
+      </div>
+      <div id="render-badges" class="ml-auto flex items-center gap-2"></div>
+    </header>
+
+    <div class="grid gap-5 p-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <!-- trái: waveform + tiến trình + thông tin -->
+      <div class="min-w-0 space-y-3">
+        <div id="wave-wrap" class="wave-wrap">
+          <div id="wave-empty" class="flex h-[140px] items-center justify-center px-6 text-center text-sm text-mute">
+            Chưa có bản remix. Tải và phân tích đủ hai bài, rồi bấm “Render remix”.
+          </div>
+          <div id="wave" class="hidden"></div>
+          <div id="drop-pin" class="drop-pin hidden"><span>DROP</span></div>
+          <div id="wave-loading" class="absolute inset-0 z-[4] hidden items-center justify-center bg-[#0b0e12]/70 font-mono text-xs text-mute">Đang nạp waveform…</div>
+        </div>
+        <audio id="fallback-audio" class="hidden w-full" controls preload="metadata"></audio>
+
+        <div id="transport" class="flex flex-wrap items-center gap-3">
+          <button id="btn-play" class="play-btn" disabled aria-label="Phát / tạm dừng bản remix" title="Phát / tạm dừng (Space)">
+            <svg id="ico-play" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>
+            <svg id="ico-pause" class="hidden" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="2.5" width="3.2" height="11" rx="1"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="1"/></svg>
+          </button>
+          <div class="font-mono text-sm"><span id="t-cur">0:00.0</span><span class="text-mute"> / </span><span id="t-total" class="text-mute">0:00.0</span></div>
+          <div id="result-name" class="min-w-0 flex-1 truncate text-right font-mono text-xs text-mute"></div>
+        </div>
+
+        <div id="render-progress" class="well hidden p-3"></div>
+        <div id="render-error" class="errbox hidden" role="alert"><p id="render-error-title" class="font-semibold"></p><p id="render-error-msg" class="mt-0.5 break-words"></p></div>
+
+        <dl id="plan" class="hidden grid grid-cols-2 gap-2 sm:grid-cols-4"></dl>
+        <p id="result-note" class="hidden font-mono text-[11px] leading-relaxed text-mute"></p>
+      </div>
+
+      <!-- phải: bảng chỉnh -->
+      <div class="min-w-0 space-y-4">
+        <div class="well space-y-3 p-3.5" id="mixer"></div>
+
+        <div class="well space-y-3 p-3.5 text-sm">
+          <label class="flex cursor-pointer items-start gap-2.5">
+            <input id="opt-fast" type="checkbox" class="chk mt-0.5">
+            <span><span class="font-medium">Nghe nhanh (không master)</span><br><span class="text-xs text-mute">Bỏ Matchering để render nhanh khi kéo thanh trượt. Tắt công tắc này rồi render lại để có bản cuối.</span></span>
+          </label>
+          <label class="flex cursor-pointer items-start gap-2.5">
+            <input id="opt-auto" type="checkbox" class="chk mt-0.5">
+            <span><span class="font-medium">Tự render lại khi chỉnh</span><br><span class="text-xs text-mute">Sau lần render đầu, mỗi lần chỉnh xong sẽ tự render lại (chờ 0,8 giây sau thao tác cuối).</span></span>
+          </label>
+        </div>
+
+        <details class="well p-3.5 text-sm" id="advanced">
+          <summary class="cursor-pointer select-none font-medium">Nâng cao: tông &amp; điểm neo vocal</summary>
+          <div class="mt-3 space-y-3">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <label for="semi-val" class="text-xs text-mute">Đổi tông (bán cung)</label>
+                <label class="flex items-center gap-1.5 text-xs"><input id="semi-auto" type="checkbox" class="chk" checked> Tự động</label>
+              </div>
+              <div class="mt-1.5 flex items-center gap-2">
+                <input id="semi-val" type="number" min="-12" max="12" step="1" value="0" class="num" disabled>
+                <span id="semi-hint" class="text-xs text-mute"></span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <label for="anchor-val" class="text-xs text-mute">Điểm neo trong Target (giây)</label>
+                <label class="flex items-center gap-1.5 text-xs"><input id="anchor-auto" type="checkbox" class="chk" checked> Tự động (Hook)</label>
+              </div>
+              <div class="mt-1.5 flex items-center gap-2">
+                <input id="anchor-val" type="number" min="0" step="0.1" value="0" class="num" disabled>
+                <button id="anchor-hook" type="button" class="btn !px-2 !py-1 !text-xs" disabled>Dùng Hook</button>
+              </div>
+              <p id="anchor-hint" class="mt-1 text-xs text-mute"></p>
+            </div>
+          </div>
+        </details>
+
+        <div class="flex flex-col gap-2">
+          <button id="btn-render" class="btn btn-primary !py-2.5 !text-sm" disabled>Render remix</button>
+          <a id="btn-download" class="btn !py-2.5 !text-sm" aria-disabled="true" role="button" tabindex="-1">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>
+            <span id="download-label">Tải WAV</span>
+          </a>
+          <p id="render-hint" class="text-xs leading-relaxed text-mute" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="pb-6 pt-2 text-center font-mono text-[11px] text-mute">
+    Chạy cục bộ · mọi file xử lý trên máy bạn · <a class="underline decoration-dotted underline-offset-2 hover:text-ink" href="/docs">API</a>
+  </footer>
+</main>
+
+<div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2" aria-live="polite"></div>
+
+<script type="module">
+/* =====================================================================
+   AI Remix Style Transfer Studio — giao diện (Phần 3)
+   Mọi số liệu lấy từ API; không có dữ liệu giả lập.
+   ===================================================================== */
+const WAVESURFER_URL = 'https://cdn.jsdelivr.net/npm/wavesurfer.js@7.8.4/dist/wavesurfer.esm.js';
+const POLL_MS = 500;
+const RERENDER_DEBOUNCE_MS = 800;
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------- localStorage an toàn ---------- */
+const LS = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* bỏ qua */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* bỏ qua */ } },
+};
+const keyHash = (role) => `airemix.hash.${role}`;
+const keyJob = (role) => `airemix.job.${role}`;
+const KEY_PARAMS = 'airemix.params';
+const KEY_RENDER = 'airemix.render';
+
+/* ---------- API ---------- */
+class ApiError extends Error {
+  constructor(status, message, job = null) { super(message); this.status = status; this.job = job; }
+}
+class Cancelled extends Error {}
+
+function detailText(detail, status) {
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail)) {          // lỗi schema tự động của FastAPI
+    const parts = detail.map((e) => {
+      if (typeof e === 'string') return e;
+      const where = Array.isArray(e?.loc) ? e.loc.filter((x) => x !== 'body' && x !== 'query').join('.') : '';
+      return e?.msg ? (where ? `${where}: ${e.msg}` : e.msg) : JSON.stringify(e);
+    });
+    if (parts.length) return parts.join('; ');
+  }
+  if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail);
+  return `Server trả lỗi ${status}.`;
+}
+
+async function api(path, options) {
+  let res;
+  try { res = await fetch(path, options); }
+  catch { throw new ApiError(0, 'Không kết nối được tới server. Server còn chạy không?'); }
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* không phải JSON */ }
+  if (!res.ok) throw new ApiError(res.status, detailText(data?.detail, res.status));
+  return data;
+}
+
+function uploadFile(role, file, onProgress) {
+  const xhr = new XMLHttpRequest();
+  const promise = new Promise((resolve, reject) => {
+    xhr.open('POST', `/api/analyze/${role}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* không phải JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300 && data) resolve(data);
+      else reject(new ApiError(xhr.status, detailText(data?.detail, xhr.status)));
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'Không kết nối được tới server khi tải file lên.'));
+    xhr.onabort = () => reject(new Cancelled());
+    const form = new FormData();
+    form.append('file', file, file.name);
+    xhr.send(form);
+  });
+  return { promise, abort: () => xhr.abort() };
+}
+
+/** Hỏi /api/jobs/<id> tới khi done/error. isCurrent() = false => dừng (bị job mới ghi đè). */
+async function pollJob(jobId, isCurrent, onUpdate) {
+  let failures = 0;
+  for (;;) {
+    if (!isCurrent()) throw new Cancelled();
+    let job;
+    try { job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); failures = 0; }
+    catch (e) {
+      if (e.status === 404 || ++failures > 8) throw e;   // mất kết nối tạm thời: thử lại vài lần
+      await sleep(1000);
+      continue;
+    }
+    if (!isCurrent()) throw new Cancelled();
+    onUpdate(job);
+    if (job.status === 'done') return job;
+    if (job.status === 'error') throw new ApiError(200, job.error || 'Tác vụ thất bại.', job);
+    await sleep(POLL_MS);
+  }
+}
+
+/* ---------- tiện ích hiển thị ---------- */
+function fmtClock(sec, decimals = 1) {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  const q = 10 ** decimals;
+  const total = Math.round(sec * q) / q;          // làm tròn trước để không ra “0:60.0”
+  const m = Math.floor(total / 60);
+  const s = total - m * 60;
+  return `${m}:${s.toFixed(decimals).padStart(decimals ? 3 + decimals : 2, '0')}`;
+}
+const fmtDb = (v) => (v <= 0.0005 ? '−∞ dB' : `${(20 * Math.log10(v)) >= 0 ? '+' : '−'}${Math.abs(20 * Math.log10(v)).toFixed(1)} dB`);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function toast(message, kind = 'info', ms = 7000) {
+  const el = document.createElement('div');
+  el.className = `toast pointer-events-auto ${kind === 'error' ? 'error' : kind === 'warn' ? 'warn' : ''}`;
+  el.textContent = message;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  $('#toasts').appendChild(el);
+  const kill = () => el.remove();
+  el.addEventListener('click', kill);
+  setTimeout(kill, ms);
+}
+
+/* ---------- thanh bước tiến trình (dùng steps[] + message của job) ---------- */
+const DEFAULT_ANALYZE_STEPS = [
+  { id: 'decode', label: 'Giải mã' }, { id: 'demucs', label: 'Tách stem (Demucs)' }, { id: 'analysis', label: 'Phân tích' },
+];
+
+function createStepbar(container) {
+  container.innerHTML = `
+    <ol class="flex gap-2" data-r="list"></ol>
+    <div class="mt-2.5 flex items-center justify-between gap-3 text-xs">
+      <span data-r="msg" class="min-w-0 truncate text-mute" title=""></span>
+      <span data-r="meta" class="flex-none font-mono text-mute"></span>
+    </div>
+    <div class="overall mt-1.5" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div data-r="bar"></div></div>`;
+  const list = $('[data-r=list]', container), msg = $('[data-r=msg]', container);
+  const meta = $('[data-r=meta]', container), bar = $('[data-r=bar]', container);
+  const prog = $('.overall', container);
+  let sig = '';
+  return {
+    update({ steps, message, progress = 0, elapsed = null }) {
+      const nextSig = steps.map((s) => s.id).join('|');
+      if (nextSig !== sig) {
+        sig = nextSig;
+        list.innerHTML = '';
+        for (const s of steps) {
+          const li = document.createElement('li');
+          li.className = 'step'; li.dataset.id = s.id;
+          li.innerHTML = '<div class="step-name"><span class="step-dot"></span><span class="truncate" data-r="label"></span></div><div class="step-track"><div class="step-fill"></div></div>';
+          $('[data-r=label]', li).textContent = s.label;
+          list.appendChild(li);
+        }
+      }
+      for (const s of steps) {
+        const li = list.querySelector(`[data-id="${CSS.escape(s.id)}"]`);
+        if (!li) continue;
+        li.dataset.state = s.state;
+        $('.step-fill', li).style.width = `${Math.round(clamp(s.fraction ?? 0, 0, 1) * 100)}%`;
+      }
+      msg.textContent = message || '';
+      msg.title = message || '';
+      const pct = Math.round(clamp(progress, 0, 1) * 100);
+      meta.textContent = `${pct}%${elapsed != null ? ` · ${Math.round(elapsed)}s` : ''}`;
+      bar.style.width = `${pct}%`;
+      prog.setAttribute('aria-valuenow', String(pct));
+    },
+  };
+}
+
+/* ---------- trạng thái chung ---------- */
+const state = {
+  system: null,
+  tracks: {},
+  render: { token: 0, job: null, result: null, plan: null, params: null, hasRendered: false, running: false, error: null, debounce: null },
+  ws: null, wsFailed: false, wsLoadId: 0,
+  playingAudio: null,
+};
+
+const ROLES = {
+  reference: {
+    title: 'Reference Remix', tag: 'REF', accent: 'var(--ref)',
+    sub: 'Bản remix mẫu: học BPM, Key, Drop, sidechain và phổ tần',
+  },
+  target: {
+    title: 'Target Song', tag: 'TGT', accent: 'var(--tgt)',
+    sub: 'Bài gốc: lấy vocal ghép vào Drop của Reference',
+  },
+};
+
+function stopAllPlayback(except = null) {
+  for (const t of Object.values(state.tracks)) {
+    if (t.audio && t.audio !== except) { t.audio.pause(); }
+  }
+  if (except !== 'result') {
+    if (state.ws?.isPlaying()) state.ws.pause();
+    const fb = $('#fallback-audio'); if (fb && !fb.paused) fb.pause();
+  }
+}
+
+/* =====================================================================
+   KHUNG BÀI HÁT (Reference / Target)
+   ===================================================================== */
+function panelTemplate(role) {
+  const cfg = ROLES[role];
+  return `
+  <section class="panel" data-role="${role}" style="--accent: ${cfg.accent}">
+    <header class="panel-head">
+      <span class="tag">${cfg.tag}</span>
+      <div class="min-w-0">
+        <h2 class="text-sm font-semibold">${cfg.title}</h2>
+        <p class="truncate text-xs text-mute">${cfg.sub}</p>
+      </div>
+      <button data-r="change" type="button" class="btn ml-auto hidden !px-2.5 !py-1 !text-xs">Đổi file</button>
+    </header>
+    <div class="p-4">
+      <div data-r="idle" class="dropzone" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả file nhạc cho ${cfg.title}">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="accent-text" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
+        <p class="text-sm font-medium">Kéo thả file nhạc vào đây</p>
+        <p class="text-xs text-mute">hoặc bấm để chọn file</p>
+        <p data-r="limits" class="mt-1 max-w-xs font-mono text-[11px] leading-relaxed text-mute"></p>
+      </div>
+
+      <div data-r="busy" class="hidden">
+        <div class="flex items-baseline gap-2">
+          <span data-r="busy-name" class="min-w-0 truncate text-sm font-medium"></span>
+          <span data-r="busy-label" class="flex-none font-mono text-[11px] text-mute"></span>
+        </div>
+        <div data-r="steps" class="mt-3"></div>
+      </div>
+
+      <div data-r="error" class="hidden">
+        <div class="errbox" role="alert"><p data-r="err-title" class="font-semibold"></p><p data-r="err-msg" class="mt-0.5 break-words"></p></div>
+        <button data-r="retry" type="button" class="btn mt-3">Chọn file khác</button>
+      </div>
+
+      <div data-r="ready" class="hidden">
+        <div class="flex items-center gap-3">
+          <button data-r="play" type="button" class="play-btn" aria-label="Nghe thử bản gốc" title="Nghe thử bản gốc">
+            <svg data-r="ico-play" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>
+            <svg data-r="ico-pause" class="hidden" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="2.5" width="3.2" height="11" rx="1"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="1"/></svg>
+          </button>
+          <div class="min-w-0 flex-1">
+            <p data-r="name" class="truncate text-sm font-medium"></p>
+            <p data-r="sub" class="font-mono text-[11px] text-mute"></p>
+          </div>
+        </div>
+        <div class="mt-3 grid grid-cols-3 gap-2">
+          <div class="stat"><div class="stat-label">BPM</div><div data-r="bpm" class="stat-val"></div><div data-r="bpm-sub" class="stat-sub">&nbsp;</div></div>
+          <div class="stat"><div class="stat-label">Key</div><div data-r="key" class="stat-val"></div><div data-r="key-sub" class="stat-sub">&nbsp;</div></div>
+          <div class="stat"><div class="stat-label">Drop</div><div data-r="drop" class="stat-val"></div><div data-r="drop-sub" class="stat-sub">&nbsp;</div></div>
+        </div>
+        <div data-r="warn" class="warnbox mt-3 hidden" role="alert"></div>
+        <div class="mt-3">
+          <div data-r="timeline" class="timeline" role="slider" tabindex="0" aria-label="Vị trí nghe thử" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+        </div>
+        <div data-r="chips" class="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-mute"></div>
+        <div class="mt-3">
+          <div class="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-wider text-mute"><span>Phổ tần (1/3 octave)</span><span data-r="centroid"></span></div>
+          <canvas data-r="spectrum" class="block h-24 w-full rounded-md border border-line bg-[#0b0e12]"></canvas>
+        </div>
+      </div>
+    </div>
+    <div data-r="veil" class="dragveil hidden">Thả để tải lên ${cfg.title}</div>
+    <input data-r="file" type="file" class="hidden">
+  </section>`;
+}
+
+function buildPanel(role) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = panelTemplate(role).trim();
+  const root = wrap.firstElementChild;
+  $('#tracks').appendChild(root);
+  const el = { root };
+  root.querySelectorAll('[data-r]').forEach((n) => { el[n.dataset.r] = n; });
+  const t = {
+    role, state: 'idle', token: 0, name: '', hash: null, analysis: null, audioUrl: null,
+    uploadPct: 0, abort: null, audio: null, error: null, el, stepbar: createStepbar(el.steps), dragDepth: 0,
+  };
+  state.tracks[role] = t;
+
+  const openChooser = () => { el.file.value = ''; el.file.click(); };
+  el.idle.addEventListener('click', openChooser);
+  el.idle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChooser(); } });
+  el.change.addEventListener('click', openChooser);
+  el.retry.addEventListener('click', openChooser);
+  el.file.addEventListener('change', () => { const f = el.file.files?.[0]; if (f) handleFile(role, f); });
+
+  // kéo thả trên toàn bộ khung
+  root.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); t.dragDepth++; root.classList.add('is-drag'); el.veil.classList.toggle('hidden', t.state === 'idle'); });
+  root.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  root.addEventListener('dragleave', () => { t.dragDepth = Math.max(0, t.dragDepth - 1); if (!t.dragDepth) endDrag(t); });
+  root.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); t.dragDepth = 0; endDrag(t);
+    const files = [...e.dataTransfer.files];
+    if (files.length > 1) toast('Chỉ nhận một file mỗi khung — dùng file đầu tiên.', 'warn');
+    if (files[0]) handleFile(role, files[0]);
+  });
+
+  // nghe thử bản gốc
+  el.play.addEventListener('click', () => toggleOriginal(t));
+  const seekFromEvent = (e) => {
+    if (!t.audio || !Number.isFinite(t.audio.duration)) return;
+    const r = el.timeline.getBoundingClientRect();
+    t.audio.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * t.audio.duration;
+    if (t.audio.paused) toggleOriginal(t);
+  };
+  el.timeline.addEventListener('click', seekFromEvent);
+  el.timeline.addEventListener('keydown', (e) => {
+    if (!t.audio || !Number.isFinite(t.audio.duration)) return;
+    if (e.key === 'ArrowRight') { t.audio.currentTime = Math.min(t.audio.duration, t.audio.currentTime + 5); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { t.audio.currentTime = Math.max(0, t.audio.currentTime - 5); e.preventDefault(); }
+  });
+  new ResizeObserver(() => { if (t.state === 'ready') drawSpectrum(t); }).observe(el.spectrum);
+  return t;
+}
+
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+function endDrag(t) { t.el.root.classList.remove('is-drag'); t.el.veil.classList.add('hidden'); }
+
+function setTrackState(t, next) {
+  t.state = next;
+  const { el } = t;
+  el.idle.classList.toggle('hidden', next !== 'idle');
+  el.busy.classList.toggle('hidden', !(next === 'uploading' || next === 'analyzing'));
+  el.error.classList.toggle('hidden', next !== 'error');
+  el.ready.classList.toggle('hidden', next !== 'ready');
+  el.change.classList.toggle('hidden', !(next === 'ready' || next === 'error'));
+  refreshRenderUI();
+  if (next === 'ready') requestAnimationFrame(() => drawSpectrum(t));
+}
+
+function resetTrack(t, { forget = true } = {}) {
+  t.token++;
+  if (t.abort) { t.abort(); t.abort = null; }
+  if (t.audio) { t.audio.pause(); t.audio.src = ''; t.audio = null; }
+  t.name = ''; t.hash = null; t.analysis = null; t.audioUrl = null; t.error = null; t.uploadPct = 0;
+  if (forget) { LS.del(keyHash(t.role)); LS.del(keyJob(t.role)); }
+  setTrackState(t, 'idle');
+  if (t.role === 'target') anchorHintUpdate();
+}
+
+function showTrackError(t, title, message) {
+  t.error = { title, message };
+  t.el['err-title'].textContent = title;
+  t.el['err-msg'].textContent = message;
+  setTrackState(t, 'error');
+}
+
+function validateFile(file) {
+  const sys = state.system;
+  const ext = (file.name.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+  if (sys?.extensions?.length && !sys.extensions.includes(ext)) {
+    return `Định dạng “${ext || 'không rõ'}” chưa được hỗ trợ. Dùng: ${sys.extensions.join(', ')}.`;
+  }
+  const maxMb = sys?.limits?.max_upload_mb;
+  if (maxMb && file.size > maxMb * 1024 * 1024) {
+    return `File nặng ${(file.size / 1048576).toFixed(0)} MB, vượt giới hạn ${maxMb} MB.`;
+  }
+  if (file.size === 0) return 'File rỗng.';
+  return null;
+}
+
+async function handleFile(role, file) {
+  const t = state.tracks[role];
+  if (t.state === 'uploading' || t.state === 'analyzing') {
+    toast('Đang xử lý bài này — đợi xong rồi hãy đổi file.', 'warn');
+    return;
+  }
+  const problem = validateFile(file);
+  if (problem) { toast(problem, 'error'); if (t.state === 'idle') showTrackError(t, 'Không nhận file này', problem); return; }
+
+  clearRenderResult();                      // đổi bài => bản remix cũ không còn khớp
+  resetTrack(t);
+  const token = t.token;
+  t.name = file.name; t.uploadPct = 0;
+  t.el['busy-name'].textContent = file.name;
+  t.el['busy-label'].textContent = `Đang tải lên · ${(file.size / 1048576).toFixed(1)} MB`;
+  t.stepbar.update({ steps: analyzeStepsPending(), message: 'Đang tải file lên server…', progress: 0 });
+  setTrackState(t, 'uploading');
+
+  const up = uploadFile(role, file, (frac) => {
+    if (t.token !== token) return;
+    t.uploadPct = frac;
+    t.stepbar.update({ steps: analyzeStepsPending(), message: `Đang tải lên… ${Math.round(frac * 100)}%`, progress: frac });
+  });
+  t.abort = up.abort;
+  let started;
+  try { started = await up.promise; }
+  catch (e) {
+    if (e instanceof Cancelled || t.token !== token) return;
+    t.abort = null;
+    showTrackError(t, 'Tải lên thất bại', e.message);
+    toast(`${ROLES[role].title}: ${e.message}`, 'error');
+    return;
+  }
+  t.abort = null;
+  if (t.token !== token) return;
+  t.name = started.name || file.name;
+  t.el['busy-name'].textContent = t.name;
+  LS.set(keyJob(role), started.job_id);
+  await followAnalyzeJob(t, started.job_id, token);
+}
+
+const analyzeStepsPending = () =>
+  (state.system?.stages?.analyze || DEFAULT_ANALYZE_STEPS).map((s) => ({ ...s, fraction: 0, state: 'pending' }));
+
+async function followAnalyzeJob(t, jobId, token) {
+  setTrackState(t, 'analyzing');
+  t.el['busy-name'].textContent = t.name || '…';
+  try {
+    const job = await pollJob(jobId, () => t.token === token, (j) => {
+      t.el['busy-label'].textContent = j.status === 'queued' ? 'Đang xếp hàng' : 'Đang phân tích';
+      t.stepbar.update(j);
+    });
+    LS.del(keyJob(t.role));
+    LS.set(keyHash(t.role), job.result.hash);
+    setTrackReady(t, job.result);
+  } catch (e) {
+    if (e instanceof Cancelled || t.token !== token) return;
+    LS.del(keyJob(t.role));
+    if (e.job) t.stepbar.update(e.job);
+    showTrackError(t, e.status === 404 ? 'Mất tác vụ phân tích' : 'Phân tích thất bại', e.message);
+    toast(`${ROLES[t.role].title}: ${e.message}`, 'error');
+  }
+}
+
+function statCell(t, key, value, sub) {
+  t.el[key].textContent = value;
+  t.el[`${key}-sub`].innerHTML = '';
+  t.el[`${key}-sub`].textContent = sub || ' ';
+}
+
+function setTrackReady(t, payload) {
+  const a = payload.analysis;
+  t.hash = payload.hash; t.name = payload.name || t.name; t.analysis = a; t.audioUrl = payload.audio_url;
+  const { el } = t;
+  el.name.textContent = t.name; el.name.title = t.name;
+  el.sub.textContent = `${fmtClock(a.duration, 1)} · LUFS ${a.lufs} · peak ${a.peak_db} dB`;
+  statCell(t, 'bpm', a.bpm.toFixed(1));
+  statCell(t, 'key', a.key, `tin cậy ${Math.round(a.key_confidence * 100)}%`);
+  statCell(t, 'drop', a.drop_label, `+${a.drop_score_db} dB`);
+  el.centroid.textContent = `centroid ${Math.round(a.spectral_centroid)} Hz`;
+
+  // cảnh báo / thông tin riêng từng vai
+  el.chips.innerHTML = '';
+  const chip = (k, v) => { const s = document.createElement('span'); s.textContent = `${k} ${v}`; el.chips.appendChild(s); };
+  if (t.role === 'reference') {
+    chip('Sidechain', a.sidechain_detected ? `${a.sidechain_depth_db} dB` : 'không phát hiện');
+    chip('Vocal', a.has_vocals ? 'có' : 'không');
+    chip('Drop khác', String(Math.max(0, (a.drops?.length || 1) - 1)));
+  } else {
+    chip('Hook', a.hook_label);
+    chip('Vocal', a.has_vocals ? 'có' : 'không');
+  }
+  if (t.role === 'target' && !a.has_vocals) {
+    el.warn.textContent = 'Target không có vocal đủ rõ để ghép vào bản remix. Hãy chọn bài khác.';
+    el.warn.classList.remove('hidden');
+  } else { el.warn.classList.add('hidden'); }
+
+  buildTimeline(t);
+
+  // audio nghe thử bản gốc
+  if (t.audio) { t.audio.pause(); }
+  const audio = new Audio();
+  audio.preload = 'metadata';
+  audio.src = t.audioUrl;
+  audio.addEventListener('timeupdate', () => updatePlayhead(t));
+  audio.addEventListener('play', () => syncOriginalButton(t));
+  audio.addEventListener('pause', () => syncOriginalButton(t));
+  audio.addEventListener('ended', () => { syncOriginalButton(t); updatePlayhead(t); });
+  audio.addEventListener('error', () => { if (t.audio === audio) toast(`${ROLES[t.role].title}: không phát được bản gốc.`, 'error'); });
+  t.audio = audio;
+  syncOriginalButton(t);
+
+  anchorHintUpdate();
+  setTrackState(t, 'ready');
+  if (t.role === 'target') resetAnchorForTarget();
+}
+
+function buildTimeline(t) {
+  const a = t.analysis, tl = t.el.timeline;
+  tl.innerHTML = '';
+  const dur = a.duration || 1;
+  const pct = (sec) => `${clamp(sec / dur, 0, 1) * 100}%`;
+  for (const s of a.sections || []) {
+    const seg = document.createElement('div');
+    seg.className = 'tl-seg'; seg.dataset.label = s.label;
+    seg.style.left = pct(s.start); seg.style.width = `${clamp((s.end - s.start) / dur, 0, 1) * 100}%`;
+    seg.textContent = s.label === 'drop' ? '' : s.label;   // nhãn DROP đã có ở marker
+    seg.title = `${s.label} · ${fmtClock(s.start)} → ${fmtClock(s.end)}`;
+    tl.appendChild(seg);
+  }
+  const mark = (sec, cls, text, title) => {
+    const m = document.createElement('div');
+    m.className = `tl-mark ${cls}`; m.style.left = pct(sec); m.title = title;
+    if (text) { const s = document.createElement('span'); s.textContent = text; m.appendChild(s); }
+    tl.appendChild(m);
+  };
+  for (const d of a.drops || []) {
+    if (Math.abs(d.time - a.drop_time) < 0.01) continue;
+    mark(d.time, 'minor', '', `Drop phụ ${d.label} (+${d.score_db} dB)`);
+  }
+  mark(a.drop_time, '', 'DROP', `Drop chính ${a.drop_label}`);
+  if (t.role === 'target') mark(a.hook_time, 'hook', 'HOOK', `Hook (đầu đoạn vocal cao trào) ${a.hook_label}`);
+  const head = document.createElement('div');
+  head.className = 'tl-head'; head.dataset.r = 'head';
+  tl.appendChild(head);
+}
+
+function updatePlayhead(t) {
+  const head = t.el.timeline.querySelector('.tl-head');
+  const au = t.audio;
+  if (!head || !au || !Number.isFinite(au.duration) || au.duration <= 0) return;
+  const frac = au.currentTime / au.duration;
+  head.style.display = frac > 0 && !au.ended ? 'block' : 'none';
+  head.style.left = `${frac * 100}%`;
+  t.el.timeline.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
+}
+
+function syncOriginalButton(t) {
+  const playing = !!t.audio && !t.audio.paused;
+  t.el['ico-play'].classList.toggle('hidden', playing);
+  t.el['ico-pause'].classList.toggle('hidden', !playing);
+  t.el.play.setAttribute('aria-label', playing ? 'Tạm dừng bản gốc' : 'Nghe thử bản gốc');
+}
+
+function toggleOriginal(t) {
+  if (!t.audio) return;
+  if (t.audio.paused) { stopAllPlayback(t.audio); t.audio.play().catch((e) => toast(`Không phát được: ${e.message}`, 'error')); }
+  else t.audio.pause();
+}
+
+function drawSpectrum(t) {
+  const canvas = t.el.spectrum, a = t.analysis;
+  if (!a || !canvas.clientWidth) return;
+  const { freqs, db } = a.spectrum || {};
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!freqs?.length || freqs.length !== db?.length) return;
+
+  const FLOOR = -60;
+  const padB = 14;
+  const plotH = h - padB;
+  const fMin = freqs[0], fMax = freqs[freqs.length - 1];
+  const xOf = (f) => (Math.log(f / fMin) / Math.log(fMax / fMin)) * (w - 12) + 6;
+  const accent = getComputedStyle(t.el.root).getPropertyValue('--accent').trim();
+  const color = accent.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(accent.slice(4, -1)).trim() : accent;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  ctx.font = '9px ui-monospace, Menlo, Consolas, monospace'; ctx.fillStyle = '#6b7482'; ctx.textAlign = 'center';
+  for (const [f, label] of [[100, '100'], [1000, '1k'], [10000, '10k']]) {
+    if (f < fMin || f > fMax) continue;
+    const x = Math.round(xOf(f)) + .5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, plotH); ctx.stroke();
+    ctx.fillText(label, x, h - 3);
+  }
+  for (const level of [-20, -40]) {
+    const y = Math.round(plotH * (level / FLOOR)) + .5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  const barW = Math.max(2, ((w - 12) / (freqs.length - 1)) * 0.62);
+  const grad = ctx.createLinearGradient(0, 0, 0, plotH);
+  grad.addColorStop(0, color); grad.addColorStop(1, color + '33');
+  ctx.fillStyle = grad;
+  freqs.forEach((f, i) => {
+    const level = clamp(db[i], FLOOR, 0);
+    const bh = Math.max(1, plotH * (1 - level / FLOOR));
+    ctx.fillRect(xOf(f) - barW / 2, plotH - bh, barW, bh);
+  });
+}
+
+/* =====================================================================
+   KHU REMIX: bảng chỉnh, render, waveform, tải về
+   ===================================================================== */
+const FADERS = [
+  { key: 'vocal_volume', label: 'Vocal Volume', min: 0, max: 2, step: 0.01, def: 1, kind: 'gain', hint: 'Nhân thêm lên mức vocal đã tự cân bằng' },
+  { key: 'beat_volume', label: 'Beat Volume', min: 0, max: 2, step: 0.01, def: 1, kind: 'gain', hint: 'Mức beat của Reference' },
+  { key: 'sidechain_depth', label: 'Sidechain Depth', min: 0, max: 1, step: 0.01, def: 0.8, kind: 'pct', hint: 'Độ sâu nén theo kick (chủ yếu trên reverb/delay)' },
+  { key: 'reverb_mix', label: 'Reverb Mix', min: 0, max: 1, step: 0.01, def: 0.25, kind: 'pct', hint: 'Lượng reverb + delay trên vocal' },
+];
+const faderEls = {};
+
+function faderText(f, v) {
+  return f.kind === 'gain' ? `×${v.toFixed(2)} · ${fmtDb(v)}` : `${Math.round(v * 100)}%`;
+}
+
+function buildMixer() {
+  const saved = (() => { try { return JSON.parse(LS.get(KEY_PARAMS) || '{}') || {}; } catch { return {}; } })();
+  const box = $('#mixer');
+  box.innerHTML = '<div class="flex items-center justify-between"><h3 class="font-mono text-[11px] font-semibold uppercase tracking-widest text-mute">Mixer</h3><span id="pending-chip" class="badge hidden">chờ thả tay…</span></div>';
+  for (const f of FADERS) {
+    const row = document.createElement('div');
+    const id = `fader-${f.key}`;
+    row.innerHTML = `
+      <div class="flex items-baseline justify-between gap-2">
+        <label for="${id}" class="text-sm font-medium" title="${f.hint}">${f.label}</label>
+        <span class="flex items-center gap-1">
+          <output for="${id}" class="font-mono text-xs text-mix"></output>
+          <button type="button" class="icon-btn" title="Về mặc định (${faderText(f, f.def)})" aria-label="Đặt ${f.label} về mặc định">⟲</button>
+        </span>
+      </div>
+      <input id="${id}" class="fader" type="range" min="${f.min}" max="${f.max}" step="${f.step}">
+      <p class="text-[11px] leading-snug text-mute">${f.hint}</p>`;
+    box.appendChild(row);
+    const input = $('input', row), out = $('output', row), reset = $('button', row);
+    const v0 = Number.isFinite(saved[f.key]) ? clamp(saved[f.key], f.min, f.max) : f.def;
+    const paint = () => {
+      const v = Number(input.value);
+      out.textContent = faderText(f, v);
+      input.style.setProperty('--p', `${((v - f.min) / (f.max - f.min)) * 100}%`);
+      input.setAttribute('aria-valuetext', faderText(f, v));
+    };
+    input.value = String(v0); paint();
+    input._paint = paint;
+    input.addEventListener('input', () => { paint(); saveParams(); scheduleRerender(); });
+    input.addEventListener('dblclick', () => reset.click());
+    reset.addEventListener('click', () => { input.value = String(f.def); paint(); saveParams(); scheduleRerender(); });
+    faderEls[f.key] = input;
+  }
+  $('#opt-fast').checked = saved.fast === true;
+  $('#opt-auto').checked = saved.auto !== false;
+  $('#opt-fast').addEventListener('change', () => { saveParams(); scheduleRerender(); refreshRenderUI(); });
+  $('#opt-auto').addEventListener('change', () => { saveParams(); if (!$('#opt-auto').checked) cancelDebounce(); });
+
+  $('#semi-auto').addEventListener('change', () => { $('#semi-val').disabled = $('#semi-auto').checked; scheduleRerender(); });
+  $('#semi-val').addEventListener('input', () => { scheduleRerender(); });
+  $('#anchor-auto').addEventListener('change', () => { syncAnchorControls(); scheduleRerender(); });
+  $('#anchor-val').addEventListener('input', () => { scheduleRerender(); });
+  $('#anchor-hook').addEventListener('click', () => {
+    const tg = state.tracks.target;
+    if (!tg?.analysis) return;
+    $('#anchor-val').value = tg.analysis.hook_time.toFixed(1);
+    scheduleRerender();
+  });
+}
+
+function saveParams() {
+  const out = { fast: $('#opt-fast').checked, auto: $('#opt-auto').checked };
+  for (const f of FADERS) out[f.key] = Number(faderEls[f.key].value);
+  LS.set(KEY_PARAMS, JSON.stringify(out));
+}
+
+function syncAnchorControls() {
+  const auto = $('#anchor-auto').checked;
+  const hasTarget = !!state.tracks.target?.analysis;
+  $('#anchor-val').disabled = auto || !hasTarget;
+  $('#anchor-hook').disabled = auto || !hasTarget;
+}
+
+function anchorHintUpdate() {
+  const a = state.tracks.target?.analysis;
+  const input = $('#anchor-val');
+  if (a) { input.max = String(Math.floor(a.duration * 10) / 10); }
+  $('#anchor-hint').textContent = a
+    ? `Tự động = Hook ở ${a.hook_label} (căn vào ô nhịp gần nhất). Bài dài ${fmtClock(a.duration)}.`
+    : 'Cần phân tích Target trước.';
+  syncAnchorControls();
+}
+
+function resetAnchorForTarget() {
+  const a = state.tracks.target?.analysis;
+  if (!a) return;
+  $('#anchor-auto').checked = true;
+  $('#anchor-val').value = a.hook_time.toFixed(1);
+  anchorHintUpdate();
+}
+
+function currentParams() {
+  const body = {};
+  for (const f of FADERS) body[f.key] = Number(faderEls[f.key].value);
+  const anchor = parseFloat($('#anchor-val').value);
+  body.anchor_time = !$('#anchor-auto').checked && Number.isFinite(anchor) ? Math.max(0, anchor) : null;
+  const semi = parseInt($('#semi-val').value, 10);
+  body.semitone_shift = !$('#semi-auto').checked && Number.isFinite(semi) ? clamp(semi, -12, 12) : null;
+  body.master = !$('#opt-fast').checked;
+  return body;
+}
+
+function canRender() {
+  const r = state.tracks.reference, t = state.tracks.target;
+  if (!r || !t) return { ok: false, reason: '' };
+  if (r.state !== 'ready' || t.state !== 'ready') {
+    const busy = [r, t].some((x) => x.state === 'uploading' || x.state === 'analyzing');
+    return { ok: false, reason: busy ? 'Đang phân tích — đợi xong cả hai bài.' : 'Cần tải và phân tích đủ cả Reference lẫn Target.' };
+  }
+  if (!t.analysis.has_vocals) return { ok: false, reason: 'Target không có vocal đủ rõ — hãy chọn bài khác.' };
+  return { ok: true, reason: '' };
+}
+
+function refreshRenderUI() {
+  const can = canRender();
+  const rs = state.render;
+  const btn = $('#btn-render');
+  btn.disabled = !can.ok || rs.running;
+  btn.textContent = rs.running ? 'Đang render…' : rs.result ? 'Render lại' : 'Render remix';
+  btn.setAttribute('aria-busy', rs.running ? 'true' : 'false');
+
+  const fast = $('#opt-fast').checked;
+  const hints = [];
+  if (!can.ok && can.reason) hints.push(can.reason);
+  else if (!rs.result && !rs.running) hints.push(fast ? 'Chế độ nghe nhanh: bản này chưa qua Matchering.' : 'Lần đầu có thể mất vài phút (khớp tempo/tông + Matchering).');
+  $('#render-hint').textContent = hints.join(' ');
+
+  const dl = $('#btn-download');
+  const r = rs.result;
+  if (r) {
+    dl.href = r.download_url; dl.setAttribute('download', r.filename || '');
+    dl.removeAttribute('aria-disabled'); dl.removeAttribute('tabindex');
+    $('#download-label').textContent = r.params?.master === false ? 'Tải WAV (chưa master)' : 'Tải WAV';
+  } else {
+    dl.removeAttribute('href'); dl.setAttribute('aria-disabled', 'true'); dl.setAttribute('tabindex', '-1');
+    $('#download-label').textContent = 'Tải WAV';
+  }
+  syncAnchorControls();
+}
+
+/* --- debounce render khi chỉnh --- */
+function cancelDebounce() { clearTimeout(state.render.debounce); state.render.debounce = null; $('#pending-chip').classList.add('hidden'); }
+function scheduleRerender() {
+  const rs = state.render;
+  if (!$('#opt-auto').checked || !rs.hasRendered || !canRender().ok) return;
+  clearTimeout(rs.debounce);
+  $('#pending-chip').classList.remove('hidden');
+  rs.debounce = setTimeout(() => { rs.debounce = null; $('#pending-chip').classList.add('hidden'); startRender(); }, RERENDER_DEBOUNCE_MS);
+}
+
+/* --- render --- */
+const renderBar = createStepbar($('#render-progress'));
+const RENDER_STEPS_PENDING = () => {
+  const master = !$('#opt-fast').checked;
+  const all = state.system?.stages?.render || [{ id: 'matching', label: 'Khớp Vocal & Beat' }, { id: 'mastering', label: 'Mastering' }];
+  return all.filter((s) => master || s.id !== 'mastering').map((s) => ({ ...s, fraction: 0, state: 'pending' }));
+};
+
+function showRenderError(title, message) {
+  state.render.error = { title, message };
+  $('#render-error-title').textContent = title;
+  $('#render-error-msg').textContent = message;
+  $('#render-error').classList.remove('hidden');
+}
+function clearRenderError() { state.render.error = null; $('#render-error').classList.add('hidden'); }
+
+function renderBadges() {
+  const box = $('#render-badges'); box.innerHTML = '';
+  const r = state.render.result;
+  const add = (text, cls = '') => { const s = document.createElement('span'); s.className = `badge ${cls}`; s.textContent = text; box.appendChild(s); };
+  if (state.render.running) add('đang render…', 'warn');
+  if (r?.cached) add('từ cache', 'ok');
+  if (r && r.params?.master === false) add('chưa master', 'warn');
+  else if (r) add('đã master', 'ok');
+}
+
+function renderPlan(plan, result) {
+  const dl = $('#plan');
+  if (!plan) { dl.classList.add('hidden'); return; }
+  dl.innerHTML = '';
+  const cell = (k, v, sub) => {
+    const d = document.createElement('div'); d.className = 'stat';
+    d.innerHTML = '<dt class="stat-label"></dt><dd class="stat-val !text-base !text-ink"></dd><dd class="stat-sub">&nbsp;</dd>';
+    $('dt', d).textContent = k; $('dd', d).textContent = v; $('dd:last-child', d).textContent = sub || ' ';
+    dl.appendChild(d);
+  };
+  const mult = plan.tempo_multiplier;
+  cell('Tempo', `${plan.target_bpm.toFixed(1)} → ${(plan.ref_bpm * mult).toFixed(1)}`, `co giãn ×${plan.stretch_factor.toFixed(3)}${mult !== 1 ? ` · ref ×${mult}` : ''}`);
+  cell('Đổi tông', `${plan.semitones > 0 ? '+' : ''}${plan.semitones} bán cung`, $('#semi-auto').checked ? 'tự tính theo Key' : 'chọn thủ công');
+  cell('Vocal neo tại', fmtClock(plan.anchor_src, 2), 'trong Target');
+  cell('Đặt vào Drop', fmtClock(plan.drop_time, 2), `bắt đầu ghép ở ${fmtClock(plan.place_time, 2)} (Reference)`);
+  dl.classList.remove('hidden');
+  const note = $('#result-note');
+  if (result) {
+    note.textContent = `Vocal: ${result.vocal_engine} (${result.vocal_gain_db > 0 ? '+' : ''}${Number(result.vocal_gain_db).toFixed(1)} dB) · Mastering: ${result.mastering_engine} · Render mất ${result.render_seconds}s · Dài ${fmtClock(result.duration)}`;
+    note.classList.remove('hidden');
+  } else note.classList.add('hidden');
+}
+
+function clearRenderResult() {
+  const rs = state.render;
+  rs.token++; cancelDebounce();
+  rs.result = null; rs.plan = null; rs.running = false; rs.hasRendered = false;
+  LS.del(KEY_RENDER);
+  clearRenderError();
+  $('#render-progress').classList.add('hidden');
+  $('#plan').classList.add('hidden'); $('#result-note').classList.add('hidden');
+  $('#result-name').textContent = '';
+  unloadWave();
+  renderBadges(); refreshRenderUI();
+}
+
+async function startRender() {
+  const can = canRender();
+  if (!can.ok) { toast(can.reason || 'Chưa thể render.', 'warn'); return; }
+  const rs = state.render;
+  cancelDebounce();
+  const token = ++rs.token;               // ghi đè job cũ: ngừng poll, bỏ kết quả của nó
+  rs.hasRendered = true; rs.running = true;
+  clearRenderError();
+  const params = currentParams();
+  const body = { reference: state.tracks.reference.hash, target: state.tracks.target.hash, ...params };
+  $('#render-progress').classList.remove('hidden');
+  renderBar.update({ steps: RENDER_STEPS_PENDING(), message: 'Đang gửi yêu cầu render…', progress: 0 });
+  $('#wave-wrap').classList.toggle('is-stale', !!rs.result);
+  renderBadges(); refreshRenderUI();
+
+  let started;
+  try {
+    started = await api('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (e) {
+    if (rs.token !== token) return;
+    finishRenderFailure('Không render được', e.message);
+    if (e.status === 404) await revalidateTracks();
+    return;
+  }
+  if (rs.token !== token) return;
+  renderPlan(started.plan, null);          // kế hoạch ghép hiển thị ngay, trước khi render xong
+  try {
+    const job = await pollJob(started.job_id, () => rs.token === token, (j) => renderBar.update(j));
+    rs.running = false;
+    applyRenderResult(job.result);
+  } catch (e) {
+    if (e instanceof Cancelled || rs.token !== token) return;
+    if (e.job) renderBar.update(e.job);
+    finishRenderFailure(e.status === 404 ? 'Mất tác vụ render' : 'Render thất bại', e.message);
+  }
+}
+
+function finishRenderFailure(title, message) {
+  const rs = state.render;
+  rs.running = false;
+  $('#wave-wrap').classList.remove('is-stale');
+  showRenderError(title, message);
+  toast(`${title}: ${message}`, 'error');
+  renderBadges(); refreshRenderUI();
+}
+
+function applyRenderResult(r) {
+  const rs = state.render;
+  rs.result = r; rs.plan = r.plan;
+  LS.set(KEY_RENDER, JSON.stringify({ id: r.render_id, ref: r.reference, tgt: r.target }));
+  $('#render-progress').classList.add('hidden');
+  $('#wave-wrap').classList.remove('is-stale');
+  $('#result-name').textContent = r.filename; $('#result-name').title = r.filename;
+  renderPlan(r.plan, r);
+  if (r.params) {                          // semitone hiển thị thực tế khi đang để tự động
+    $('#semi-hint').textContent = $('#semi-auto').checked ? `Đang dùng ${r.plan.semitones > 0 ? '+' : ''}${r.plan.semitones}` : '';
+    if ($('#semi-auto').checked) $('#semi-val').value = String(r.plan.semitones);
+  }
+  renderBadges(); refreshRenderUI();
+  loadWave(r);
+}
+
+function syncControlsFromParams(p) {
+  if (!p) return;
+  for (const f of FADERS) {
+    if (Number.isFinite(p[f.key])) { faderEls[f.key].value = String(clamp(p[f.key], f.min, f.max)); faderEls[f.key]._paint(); }
+  }
+  if (typeof p.master === 'boolean') $('#opt-fast').checked = !p.master;
+  const manualSemi = Number.isFinite(p.semitone_shift);
+  $('#semi-auto').checked = !manualSemi;
+  $('#semi-val').disabled = !manualSemi;
+  if (manualSemi) $('#semi-val').value = String(p.semitone_shift);
+  const manualAnchor = Number.isFinite(p.anchor_time);
+  $('#anchor-auto').checked = !manualAnchor;
+  if (manualAnchor) $('#anchor-val').value = Number(p.anchor_time).toFixed(1);
+  syncAnchorControls();
+  saveParams();
+}
+
+async function revalidateTracks() {
+  for (const t of Object.values(state.tracks)) {
+    if (t.state !== 'ready') continue;
+    try { await api(`/api/tracks/${t.hash}`); }
+    catch (e) {
+      if (e.status === 404) { toast(`${ROLES[t.role].title} không còn trong cache — hãy tải lên lại.`, 'warn'); resetTrack(t); clearRenderResult(); }
+    }
+  }
+}
+
+/* --- waveform kết quả (Wavesurfer v7, nạp động để lỗi CDN không làm hỏng cả trang) --- */
+async function getWaveSurfer() {
+  if (state.ws) return state.ws;
+  if (state.wsFailed) return null;
+  try {
+    const mod = await import(WAVESURFER_URL);
+    const WaveSurfer = mod.default;
+    const ws = WaveSurfer.create({
+      container: '#wave', height: 140, waveColor: '#3b6a45', progressColor: '#8bff7a', cursorColor: '#ffffff', cursorWidth: 1,
+      barWidth: 2, barGap: 1, barRadius: 1, normalize: true, dragToSeek: true, interact: true,
+    });
+    ws.on('timeupdate', (t) => { $('#t-cur').textContent = fmtClock(t); });
+    ws.on('play', () => { stopAllPlayback('result'); syncResultButton(true); });
+    ws.on('pause', () => syncResultButton(false));
+    ws.on('finish', () => syncResultButton(false));
+    ws.on('ready', (d) => { $('#t-total').textContent = fmtClock(d); });
+    ws.on('error', (err) => { $('#wave-loading').classList.add('hidden'); showRenderError('Không nạp được waveform', String(err?.message || err)); });
+    state.ws = ws;
+    return ws;
+  } catch (e) {
+    state.wsFailed = true;
+    console.warn('Không tải được Wavesurfer:', e);
+    toast('Không tải được Wavesurfer từ CDN (cần mạng) — dùng trình phát đơn giản thay thế.', 'warn');
+    return null;
+  }
+}
+
+function syncResultButton(playing) {
+  $('#ico-play').classList.toggle('hidden', playing);
+  $('#ico-pause').classList.toggle('hidden', !playing);
+}
+
+function placeDropPin(r) {
+  const pin = $('#drop-pin');
+  if (!r?.plan || !r.duration) { pin.classList.add('hidden'); return; }
+  pin.style.left = `${clamp(r.plan.drop_time / r.duration, 0, 1) * 100}%`;
+  pin.title = `Drop của Reference: ${fmtClock(r.plan.drop_time, 2)}`;
+  pin.classList.remove('hidden');
+}
+
+async function loadWave(r) {
+  const id = ++state.wsLoadId;
+  $('#t-total').textContent = fmtClock(r.duration);
+  $('#wave-empty').classList.add('hidden');
+  $('#wave').classList.remove('hidden');   // phải hiện trước khi tạo Wavesurfer để đo đúng chiều rộng
+  const ws = await getWaveSurfer();
+  if (id !== state.wsLoadId) return;
+  if (!ws) {                               // dự phòng: thẻ <audio> thường
+    const fb = $('#fallback-audio');
+    $('#wave').classList.add('hidden');
+    $('#wave-empty').classList.remove('hidden');
+    $('#wave-empty').textContent = 'Waveform không khả dụng (không tải được Wavesurfer). Dùng trình phát bên dưới.';
+    fb.classList.remove('hidden'); fb.src = r.audio_url;
+    $('#transport').classList.add('hidden');
+    return;
+  }
+  // giữ vị trí & trạng thái phát khi render lại để nghe so sánh
+  const prevTime = ws.getDuration() ? ws.getCurrentTime() : 0;
+  const wasPlaying = ws.isPlaying();
+  $('#wave').classList.remove('hidden');
+  $('#wave-loading').classList.remove('hidden'); $('#wave-loading').classList.add('flex');
+  try {
+    await ws.load(r.audio_url);
+  } catch (e) {
+    if (id !== state.wsLoadId) return;
+    $('#wave-loading').classList.add('hidden'); $('#wave-loading').classList.remove('flex');
+    showRenderError('Không nạp được waveform', String(e?.message || e));
+    return;
+  }
+  if (id !== state.wsLoadId) return;
+  $('#wave-loading').classList.add('hidden'); $('#wave-loading').classList.remove('flex');
+  $('#btn-play').disabled = false;
+  placeDropPin(r);
+  const dur = ws.getDuration();
+  if (prevTime > 0 && dur > 0) ws.setTime(Math.min(prevTime, dur - 0.05));
+  if (wasPlaying) ws.play().catch(() => {});
+}
+
+function unloadWave() {
+  state.wsLoadId++;
+  if (state.ws) { try { state.ws.pause(); state.ws.empty(); } catch { /* bỏ qua */ } }
+  $('#wave').classList.add('hidden');
+  $('#wave-empty').classList.remove('hidden');
+  $('#wave-empty').textContent = 'Chưa có bản remix. Tải và phân tích đủ hai bài, rồi bấm “Render remix”.';
+  $('#drop-pin').classList.add('hidden');
+  $('#btn-play').disabled = true;
+  $('#t-cur').textContent = '0:00.0'; $('#t-total').textContent = '0:00.0';
+  syncResultButton(false);
+  const fb = $('#fallback-audio'); fb.pause(); fb.removeAttribute('src'); fb.classList.add('hidden');
+  $('#transport').classList.remove('hidden');
+}
+
+function toggleResult() {
+  if (state.ws && !$('#btn-play').disabled) state.ws.playPause();
+}
+
+/* =====================================================================
+   Khởi động
+   ===================================================================== */
+function renderSystem(sys) {
+  const chips = $('#sys-chips');
+  chips.innerHTML = '';
+  const led = (label, cls, title) => {
+    const s = document.createElement('span');
+    s.className = 'flex items-center gap-1.5'; s.title = title;
+    s.innerHTML = `<i class="led ${cls}"></i><span></span>`; $('span', s).textContent = label;
+    chips.appendChild(s);
+  };
+  if (!sys) { led('offline', 'bad', 'Không kết nối được server'); return; }
+  led('rubberband', sys.rubberband ? 'on' : 'off', sys.rubberband ? 'Có rubberband: đổi tông chất lượng cao' : 'Thiếu rubberband');
+  led('ffmpeg', sys.ffmpeg ? 'on' : 'off', sys.ffmpeg ? 'Có FFmpeg' : 'Thiếu FFmpeg');
+  const v = document.createElement('span'); v.textContent = `v${sys.version}`; chips.appendChild(v);
+
+  const banners = $('#banners'); banners.innerHTML = '';
+  const warn = (text) => { const d = document.createElement('div'); d.className = 'warnbox'; d.setAttribute('role', 'status'); d.textContent = text; banners.appendChild(d); };
+  if (!sys.rubberband) warn('Không thấy rubberband trong PATH: co giãn/đổi tông sẽ dùng librosa nên chất lượng vocal thấp hơn. Cài rubberband-cli để có kết quả tốt hơn.');
+  if (!sys.ffmpeg) warn('Không thấy FFmpeg trong PATH: file mp3/m4a/aac có thể không đọc được. Hãy cài FFmpeg hoặc dùng WAV/FLAC.');
+}
+
+function applyLimits(sys) {
+  const parts = [];
+  if (sys.extensions?.length) parts.push(sys.extensions.map((e) => e.replace('.', '')).join(' · '));
+  const lim = [];
+  if (sys.limits?.max_upload_mb) lim.push(`tối đa ${sys.limits.max_upload_mb} MB`);
+  if (sys.limits?.max_minutes) lim.push(`dài tối đa ${sys.limits.max_minutes} phút`);
+  if (lim.length) parts.push(lim.join(', '));
+  for (const t of Object.values(state.tracks)) {
+    t.el.limits.textContent = parts.join('\n');
+    t.el.limits.style.whiteSpace = 'pre-line';
+    if (sys.extensions?.length) t.el.file.accept = sys.extensions.join(',');
+  }
+}
+
+async function restoreSession() {
+  await Promise.all(Object.values(state.tracks).map(async (t) => {
+    const hash = LS.get(keyHash(t.role)), jobId = LS.get(keyJob(t.role));
+    if (jobId) {                                   // đang phân tích dở khi tải lại trang
+      const token = ++t.token;
+      t.name = '';
+      t.stepbar.update({ steps: analyzeStepsPending(), message: 'Đang nối lại tác vụ phân tích…', progress: 0 });
+      followAnalyzeJob(t, jobId, token);
+    } else if (hash) {
+      try { setTrackReady(t, await api(`/api/tracks/${encodeURIComponent(hash)}`)); }
+      catch (e) {
+        if (e.status === 404) { LS.del(keyHash(t.role)); toast(`${ROLES[t.role].title}: bài đã lưu không còn trong cache, hãy tải lại.`, 'warn'); }
+        else toast(`${ROLES[t.role].title}: ${e.message}`, 'error');
+      }
+    }
+  }));
+
+  // nạp lại bản remix gần nhất nếu vẫn đúng cặp bài
+  let saved = null;
+  try { saved = JSON.parse(LS.get(KEY_RENDER) || 'null'); } catch { /* bỏ qua */ }
+  const r = state.tracks.reference, t = state.tracks.target;
+  if (saved?.id && r.hash === saved.ref && t.hash === saved.tgt) {
+    try {
+      const res = await api(`/api/renders/${encodeURIComponent(saved.id)}`);
+      syncControlsFromParams(res.params);     // thanh trượt phản ánh đúng bản đang nghe
+      state.render.hasRendered = true;
+      applyRenderResult(res);
+    }
+    catch (e) { if (e.status === 404) LS.del(KEY_RENDER); }
+  }
+}
+
+async function init() {
+  buildMixer();
+  for (const role of Object.keys(ROLES)) buildPanel(role);
+  $('#btn-render').addEventListener('click', startRender);
+  $('#btn-play').addEventListener('click', toggleResult);
+  $('#btn-download').addEventListener('click', (e) => { if ($('#btn-download').getAttribute('aria-disabled') === 'true') e.preventDefault(); });
+  anchorHintUpdate();
+
+  // chặn trình duyệt mở file khi thả ra ngoài khung
+  for (const ev of ['dragover', 'drop']) window.addEventListener(ev, (e) => { if (hasFiles(e)) e.preventDefault(); });
+
+  // Space = phát / dừng bản remix
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat) return;
+    const tag = (document.activeElement?.tagName || '').toUpperCase();
+    if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'A', 'SUMMARY'].includes(tag) || document.activeElement?.getAttribute('role') === 'button') return;
+    if (state.ws && !$('#btn-play').disabled) { e.preventDefault(); toggleResult(); }
+  });
+
+  try {
+    state.system = await api('/api/system');
+    renderSystem(state.system);
+    applyLimits(state.system);
+  } catch (e) {
+    renderSystem(null);
+    toast(e.message, 'error');
+  }
+  refreshRenderUI(); renderBadges();
+  await restoreSession();
+  refreshRenderUI();
+}
+
+init();
+</script>
+</body>
+</html>
