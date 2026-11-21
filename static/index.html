@@ -166,7 +166,12 @@
       <g fill="#8bff7a"><rect x="5" y="11" width="2.2" height="4" rx="1"/><rect x="9" y="7" width="2.2" height="12" rx="1"/><rect x="13" y="4" width="2.2" height="18" rx="1"/><rect x="17" y="8" width="2.2" height="10" rx="1"/><rect x="21" y="11.5" width="2.2" height="3" rx="1"/></g>
     </svg>
     <h1 class="text-sm font-semibold tracking-wide">AI REMIX <span class="hidden font-normal text-mute sm:inline">STYLE TRANSFER STUDIO</span></h1>
-    <div id="sys-chips" class="ml-auto flex items-center gap-4 font-mono text-[11px] text-mute"></div>
+    <div class="ml-auto flex min-w-0 items-center gap-2">
+      <input id="api-base-url" type="url" inputmode="url" placeholder="URL Colab (https://...trycloudflare.com)"
+        class="w-44 sm:w-64 rounded border border-line bg-well px-2 py-1.5 text-[11px] text-ink outline-none focus:border-mix">
+      <button id="api-base-save" class="btn px-2 py-1.5 text-[11px]">Kết nối</button>
+      <div id="sys-chips" class="hidden md:flex items-center gap-4 font-mono text-[11px] text-mute"></div>
+    </div>
   </div>
 </header>
 
@@ -299,6 +304,21 @@ const KEY_PARAMS = 'airemix.params';
 const KEY_RENDER = 'airemix.render';
 
 /* ---------- API ---------- */
+let API_BASE = (localStorage.getItem('airemix_api_base') || '').replace(/\/+$/, '');
+function apiUrl(path) { return API_BASE + path; }
+function saveApiBase() {
+  const input = document.getElementById('api-base-url');
+  API_BASE = (input?.value || '').trim().replace(/\/+$/, '');
+  localStorage.setItem('airemix_api_base', API_BASE);
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('api-base-url');
+  const button = document.getElementById('api-base-save');
+  if (input) input.value = API_BASE;
+  if (button) button.addEventListener('click', saveApiBase);
+});
+
 class ApiError extends Error {
   constructor(status, message, job = null) { super(message); this.status = status; this.job = job; }
 }
@@ -320,7 +340,7 @@ function detailText(detail, status) {
 
 async function api(path, options) {
   let res;
-  try { res = await fetch(path, options); }
+  try { res = await fetch(apiUrl(path), options); }
   catch { throw new ApiError(0, 'Không kết nối được tới server. Server còn chạy không?'); }
   const text = await res.text();
   let data = null;
@@ -332,7 +352,7 @@ async function api(path, options) {
 function uploadFile(role, file, onProgress) {
   const xhr = new XMLHttpRequest();
   const promise = new Promise((resolve, reject) => {
-    xhr.open('POST', `/api/analyze/${role}`);
+    xhr.open('POST', apiUrl(`/api/analyze/${role}`));
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = () => {
       let data = null;
@@ -736,7 +756,7 @@ function setTrackReady(t, payload) {
   if (t.audio) { t.audio.pause(); }
   const audio = new Audio();
   audio.preload = 'metadata';
-  audio.src = t.audioUrl;
+  audio.src = apiUrl(t.audioUrl);
   audio.addEventListener('timeupdate', () => updatePlayhead(t));
   audio.addEventListener('play', () => syncOriginalButton(t));
   audio.addEventListener('pause', () => syncOriginalButton(t));
@@ -982,7 +1002,7 @@ function refreshRenderUI() {
   const dl = $('#btn-download');
   const r = rs.result;
   if (r) {
-    dl.href = r.download_url; dl.setAttribute('download', r.filename || '');
+    dl.href = apiUrl(r.download_url); dl.setAttribute('download', r.filename || '');
     dl.removeAttribute('aria-disabled'); dl.removeAttribute('tabindex');
     $('#download-label').textContent = r.params?.master === false ? 'Tải WAV (chưa master)' : 'Tải WAV';
   } else {
@@ -1205,7 +1225,7 @@ async function loadWave(r) {
     $('#wave').classList.add('hidden');
     $('#wave-empty').classList.remove('hidden');
     $('#wave-empty').textContent = 'Waveform không khả dụng (không tải được Wavesurfer). Dùng trình phát bên dưới.';
-    fb.classList.remove('hidden'); fb.src = r.audio_url;
+    fb.classList.remove('hidden'); fb.src = apiUrl(r.audio_url);
     $('#transport').classList.add('hidden');
     return;
   }
