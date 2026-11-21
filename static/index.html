@@ -1235,7 +1235,7 @@ async function loadWave(r) {
   $('#wave').classList.remove('hidden');
   $('#wave-loading').classList.remove('hidden'); $('#wave-loading').classList.add('flex');
   try {
-    await ws.load(r.audio_url);
+    await ws.load(apiUrl(r.audio_url));
   } catch (e) {
     if (id !== state.wsLoadId) return;
     $('#wave-loading').classList.add('hidden'); $('#wave-loading').classList.remove('flex');
