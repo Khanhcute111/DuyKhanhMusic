@@ -741,12 +741,40 @@ def render(background: BackgroundTasks, body: dict[str, Any] = Body(...)) -> dic
     return {"job_id": job.id, "render_id": render_id, "plan": asdict(plan), "params": asdict(params)}
 
 
+# Nếu file WAV bị mất nhưng metadata còn, tự dựng lại từ cache stem đã có.
+_RENDER_REPAIR_LOCK = threading.Lock()
+
 def _render_paths(render_id: str) -> tuple[Path, Path]:
     if not RENDER_ID_RE.fullmatch(render_id or ""):
         raise HTTPException(404, "Mã bản remix không hợp lệ.")
     wav, meta = OUTPUT_DIR / f"{render_id}.wav", OUTPUT_DIR / f"{render_id}.json"
-    if not wav.is_file() or not meta.is_file():
-        raise HTTPException(404, "Không tìm thấy bản remix (có thể đã bị dọn). Hãy render lại.")
+    if not meta.is_file():
+        raise HTTPException(404, "Không tìm thấy thông tin bản remix. Hãy render lại.")
+    if not wav.is_file() or wav.stat().st_size <= 44:
+        with _RENDER_REPAIR_LOCK:
+            # Kiểm tra lại sau khi lấy khóa, phòng hai request cùng sửa một file.
+            if not wav.is_file() or wav.stat().st_size <= 44:
+                try:
+                    info = json.loads(meta.read_text(encoding="utf-8"))
+                    ref = load_bundle(info["reference"])
+                    tgt = load_bundle(info["target"])
+                    params = RemixParams.from_dict(info.get("params") or {})
+                    tmp = OUTPUT_DIR / f"{render_id}.repair.tmp.wav"
+                    try:
+                        render_remix(ref, tgt, params, tmp)
+                        if not tmp.is_file() or tmp.stat().st_size <= 44:
+                            raise RuntimeError("Bản WAV dựng lại bị rỗng.")
+                        tmp.replace(wav)
+                        log.warning("Đã tự khôi phục file WAV cho render %s", render_id)
+                    finally:
+                        tmp.unlink(missing_ok=True)
+                except Exception as exc:
+                    log.exception("Không thể tự khôi phục render %s", render_id)
+                    raise HTTPException(
+                        404,
+                        "File WAV của bản remix đã mất và không thể tự khôi phục. "
+                        "Hãy tải lại hai bài và render lại. Chi tiết: " + str(exc)
+                    ) from None
     return wav, meta
 
 
