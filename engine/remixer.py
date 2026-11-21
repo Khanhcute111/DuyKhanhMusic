@@ -328,6 +328,20 @@ def _load_beat(ref: TrackBundle) -> np.ndarray:
     return acc
 
 
+def prepare_target_instrumental(target: TrackBundle, plan: MatchPlan) -> tuple[np.ndarray, str]:
+    """Phần nhạc nền (drums+bass+other) của Target, căn cùng vocal để hai bài thực sự hòa trộn."""
+    stems = []
+    for name in ("drums", "bass", "other"):
+        stems.append(read_stereo(target.stem_path(name)))
+    n = min(len(x) for x in stems)
+    instrumental = sum(x[:n] for x in stems)
+    seg = instrumental[int(plan.src_start * SR_PROC):int(plan.src_end * SR_PROC)]
+    if len(seg) == 0:
+        raise ValueError("Không lấy được phần nhạc nền của Target Song.")
+    out, engine = stretch_and_shift(seg, SR_PROC, 1.0 / plan.stretch_factor, plan.semitones)
+    return out, engine
+
+
 def _place_vocal(seg: np.ndarray, n: int, place_time: float, sr: int) -> np.ndarray:
     start = int(round(place_time * sr))
     if start >= n:
@@ -423,12 +437,14 @@ def render_remix(
              f"Đang khớp Vocal: {ta.bpm:.1f} → {ra.bpm * plan.tempo_multiplier:.1f} BPM, "
              f"đổi tông {plan.semitones:+d} bán cung...")
     vocal_seg, vocal_engine = prepare_vocal(target, plan, ref.file_hash)
+    target_inst_seg, instrumental_engine = prepare_target_instrumental(target, plan)
 
-    progress(STAGE_MATCH, 0.40, "Đang dựng beat từ stem của Reference...")
+    progress(STAGE_MATCH, 0.40, "Đang dựng beat Reference và nhạc nền Target...")
     beat = _load_beat(ref)
     n = len(beat)
     vocal = _place_vocal(vocal_seg, n, plan.place_time, sr)
-    del vocal_seg
+    target_instrumental = _place_vocal(target_inst_seg, n, plan.place_time, sr)
+    del vocal_seg, target_inst_seg
 
     progress(STAGE_MATCH, 0.50, "Đang xử lý vocal (EQ, compressor)...")
     v = _sos(vocal, sps.butter(2, 85.0, "high", fs=sr, output="sos"))
@@ -459,6 +475,11 @@ def render_remix(
     progress(STAGE_MATCH, 0.90, "Đang trộn Vocal + Beat...")
     mix = beat * params.beat_volume
     del beat
+    # Layer nhạc nền Target để bản phối chứa chất liệu âm nhạc từ cả hai bài.
+    # Giữ thấp hơn beat Reference để không làm mất nhịp/drop chính.
+    target_inst_gain = 0.38 * params.beat_volume
+    mix += target_instrumental * dry_gain * target_inst_gain
+    del target_instrumental
     mix += v * dry_gain * vocal_gain
     mix += wet * wet_gain * (vocal_gain * params.reverb_mix)
     del v, wet, duck
@@ -494,6 +515,8 @@ def render_remix(
         "duration": n / sr,
         "plan": asdict(plan),
         "vocal_engine": vocal_engine,
+        "target_instrumental_engine": instrumental_engine,
+        "target_instrumental_gain": target_inst_gain,
         "vocal_gain_db": round(gain_db, 2),
         "mastering_engine": mastering_engine,
         "params": asdict(params),
