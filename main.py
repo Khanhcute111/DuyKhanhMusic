@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 from urllib.parse import quote
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import BackgroundTasks, Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -649,6 +650,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="AI Remix Style Transfer Studio", version=APP_VERSION, lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/api/system")
