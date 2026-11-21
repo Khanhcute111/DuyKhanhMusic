@@ -1,0 +1,40 @@
+name: Import AI Remix Studio source
+on:
+  push:
+    paths:
+      - "ai-remix-studio-part3.zip"
+      - ".github/workflows/import-source.yml"
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Extract project
+        run: |
+          unzip -q ai-remix-studio-part3.zip
+          cp -a project/. .
+          rm -rf project ai-remix-studio-part3.zip
+      - name: Add Render configuration
+        run: |
+          cat > render.yaml <<'EOF'
+          services:
+            - type: web
+              name: ai-remix-studio
+              runtime: python
+              plan: free
+              buildCommand: pip install -r engine/requirements.txt
+              startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+              healthCheckPath: /api/system
+              autoDeploy: true
+          EOF
+      - name: Commit imported source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import AI Remix Studio project and Render config"
+          git push
