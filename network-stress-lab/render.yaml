@@ -10,6 +10,6 @@ services:
     autoDeploy: true
     envVars:
       - key: STRESS_LAB_TOKEN
-        sync: false
+        generateValue: true
       - key: ALLOWED_TARGET_HOSTS
-        sync: false
+        value: ai-remix-studio-web.onrender.com
