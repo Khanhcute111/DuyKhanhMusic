@@ -14,7 +14,6 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,8 +29,6 @@ MAX_CONCURRENCY = 4
 COOLDOWN_SECONDS = 30
 
 app = FastAPI(title="Network Stress Lab", version="1.0.0")
-app.mount("/assets", StaticFiles(directory=APP_DIR), name="assets")
-
 _reports: list[dict] = []
 _run_lock = asyncio.Lock()
 _last_run_at = 0.0
@@ -121,12 +118,12 @@ async def run_test(payload: RunRequest, authorization: str | None = Header(defau
 
     if _run_lock.locked():
         raise HTTPException(429, "Một bài kiểm thử khác đang chạy.")
-    now = time.monotonic()
-    remaining = COOLDOWN_SECONDS - (now - _last_run_at)
-    if remaining > 0:
-        raise HTTPException(429, f"Vui lòng chờ {int(remaining) + 1} giây trước lần kiểm thử tiếp theo.")
 
     async with _run_lock:
+        now = time.monotonic()
+        remaining = COOLDOWN_SECONDS - (now - _last_run_at)
+        if remaining > 0:
+            raise HTTPException(429, f"Vui lòng chờ {int(remaining) + 1} giây trước lần kiểm thử tiếp theo.")
         _last_run_at = time.monotonic()
         started = time.monotonic()
         deadline = started + payload.duration_seconds
